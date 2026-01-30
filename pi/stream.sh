@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-RTMP_URL=${RTMP_URL:-rtmp://yourdomain/live/stream}
+RTSP_URL=${RTSP_URL:-rtsp://yourdomain:8554/stream}
+RTSP_TRANSPORT=${RTSP_TRANSPORT:-tcp}
 VIDEO_DEV=${VIDEO_DEV:-/dev/video0}
 WIDTH=${WIDTH:-1280}
 HEIGHT=${HEIGHT:-720}
@@ -16,7 +17,7 @@ if ! command -v ffmpeg >/dev/null 2>&1; then
   exit 1
 fi
 
-GOP=$((FPS * 2))
+GOP=$FPS
 
 exec ffmpeg \
   -f v4l2 \
@@ -35,5 +36,6 @@ exec ffmpeg \
   -g "${GOP}" \
   -keyint_min "${GOP}" \
   -sc_threshold 0 \
+  -bf 0 \
   -an \
-  -f flv "${RTMP_URL}"
+  -f rtsp -rtsp_transport "${RTSP_TRANSPORT}" "${RTSP_URL}"

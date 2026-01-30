@@ -1,8 +1,8 @@
 # simple-web-video
 
-Minimal setup for: Pi pushes RTMP to server; server serves HLS on a subdomain.
+Minimal setup for sub-second latency: Pi pushes RTSP to server; server serves WebRTC on a subdomain.
 
-## Server-side (RTMP + HLS)
+## Server-side (RTSP + WebRTC)
 
 From `server/`:
 
@@ -12,18 +12,18 @@ From `server/`:
 
 Ports:
 
-- RTMP ingest: `1935/tcp`
-- HLS/player: `8080/tcp`
+- RTSP ingest: `8554/tcp`
+- WebRTC HTTP: `8889/tcp`
+- WebRTC media: `8189/udp`
 
 URLs:
 
-- Ingest: `rtmp://<server-host>/live/stream`
-- Player: `http://<server-host>:8080/` or `https://cam.<domain>/`
-- HLS: `http://<server-host>:8080/hls/stream.m3u8`
+- Ingest: `rtsp://<server-host>:8554/stream`
+- Viewer: `http://<server-host>:8889/stream` or `https://cam.<domain>/stream`
 
 Reverse proxy mode:
 
-- Proxy `cam.<domain>` to `http://127.0.0.1:8080`.
+- Proxy `cam.<domain>` to `http://127.0.0.1:8889` and enable TLS.
 
 Health check:
 
@@ -33,8 +33,8 @@ Health check:
 
 ## User-side (viewer)
 
-- Open `https://cam.<domain>/` (recommended) or `http://<server-host>:8080/`.
-- The page auto-loads `/hls/stream.m3u8` with native HLS or hls.js.
+- Open `https://cam.<domain>/stream` (recommended) or `http://<server-host>:8889/stream` on LAN.
+- WebRTC requires HTTPS on non-localhost.
 
 ## Pi-side (streamer)
 
@@ -48,10 +48,8 @@ sudo apt-get install -y ffmpeg
 Quick test:
 
 ```sh
-RTMP_URL=rtmp://<server-host>/live/stream ./pi/stream.sh
+RTSP_URL=rtsp://<server-host>:8554/stream ./pi/stream.sh
 ```
-
-Note: the default stream disables audio and forces H.264 baseline + yuv420p for browser compatibility.
 
 Optional systemd:
 

@@ -3,7 +3,8 @@ import os
 import subprocess
 import time
 
-RTMP_URL = os.getenv("RTMP_URL", "rtmp://yourdomain/live/stream")
+RTSP_URL = os.getenv("RTSP_URL", "rtsp://yourdomain:8554/stream")
+RTSP_TRANSPORT = os.getenv("RTSP_TRANSPORT", "tcp")
 VIDEO_DEV = os.getenv("VIDEO_DEV", "/dev/video0")
 WIDTH = os.getenv("WIDTH", "1280")
 HEIGHT = os.getenv("HEIGHT", "720")
@@ -13,7 +14,7 @@ MAXRATE = os.getenv("MAXRATE", VBITRATE)
 BUFSIZE = os.getenv("BUFSIZE", "1000k")
 PRESET = os.getenv("PRESET", "veryfast")
 
-GOP = FPS * 2
+GOP = FPS
 
 cmd = [
     "ffmpeg",
@@ -33,9 +34,11 @@ cmd = [
     "-g", str(GOP),
     "-keyint_min", str(GOP),
     "-sc_threshold", "0",
+    "-bf", "0",
     "-an",
-    "-f", "flv",
-    RTMP_URL,
+    "-f", "rtsp",
+    "-rtsp_transport", RTSP_TRANSPORT,
+    RTSP_URL,
 ]
 
 backoff = 1

@@ -1,13 +1,11 @@
 services:
-  rtmp:
-    image: alfg/nginx-rtmp:latest
-    container_name: rtmp-hls
-    entrypoint: ["nginx"]
-    command: ["-g", "daemon off;", "-c", "/etc/nginx/custom.conf"]
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: cam-mediamtx
     ports:
-      - "1935:1935"
-      - "8080:8080"
+      - "8554:8554/tcp"  # RTSP ingest
+      - "8889:8889/tcp"  # WebRTC HTTP endpoint
+      - "8189:8189/udp"  # WebRTC media (UDP)
     volumes:
-      - ./nginx.conf:/etc/nginx/custom.conf:ro
-      - ./www:/var/www
+      - ./mediamtx.yml:/mediamtx.yml:ro
     restart: unless-stopped

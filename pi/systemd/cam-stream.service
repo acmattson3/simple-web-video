@@ -1,5 +1,5 @@
 [Unit]
-Description=Camera RTMP Stream
+Description=Camera RTSP Stream
 After=network-online.target
 Wants=network-online.target
 

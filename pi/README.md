@@ -1,6 +1,6 @@
-# Pi RTMP Streamer
+# Pi RTSP Streamer
 
-Minimal client to push a V4L2 camera stream to an RTMP server.
+Minimal client to push a V4L2 camera stream to a MediaMTX server for WebRTC playback.
 
 ## Install deps
 
@@ -12,7 +12,7 @@ sudo apt-get install -y ffmpeg
 ## Quick test (one-shot)
 
 ```sh
-RTMP_URL=rtmp://<server-host>/live/stream ./stream.sh
+RTSP_URL=rtsp://<server-host>:8554/stream ./stream.sh
 ```
 
 Note: the default stream disables audio and forces H.264 baseline + yuv420p for browser compatibility.
@@ -22,7 +22,8 @@ Note: the default stream disables audio and forces H.264 baseline + yuv420p for 
 Create a file like:
 
 ```sh
-RTMP_URL=rtmp://yourdomain/live/stream
+RTSP_URL=rtsp://yourdomain:8554/stream
+RTSP_TRANSPORT=tcp
 VIDEO_DEV=/dev/video0
 WIDTH=1280
 HEIGHT=720
@@ -59,8 +60,8 @@ sudo systemctl enable --now cam-stream
 
 - Logs: `journalctl -u cam-stream -f`
 - Verify camera device exists: `ls -l /dev/video0`
-- Test RTMP TCP connectivity: `nc -vz <server-host> 1935`
-- Server-side: confirm `server/www/hls/stream.m3u8` and `.ts` segments appear
+- Test RTSP TCP connectivity: `nc -vz <server-host> 8554`
+- Server-side: open `http://<server-host>:8889/stream` on LAN
 
 ## Security note
 

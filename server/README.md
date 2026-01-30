@@ -1,30 +1,36 @@
-# RTMP -> HLS Server
+# RTSP -> WebRTC Server
 
-Dockerized NGINX with RTMP ingest and HLS output.
+Dockerized MediaMTX for RTSP ingest and WebRTC playback (sub-second latency).
 
 ## Ports
 
-- RTMP ingest: `1935/tcp`
-- HTTP (HLS + player): `8080/tcp`
+- RTSP ingest: `8554/tcp`
+- WebRTC HTTP endpoint: `8889/tcp`
+- WebRTC media (UDP): `8189/udp`
 
 ## URLs
 
-- Ingest: `rtmp://<server-host>/live/stream`
-- Viewer page: `http://<server-host>:8080/` or `https://cam.<domain>/`
-- HLS playlist: `http://<server-host>:8080/hls/stream.m3u8`
+- Ingest: `rtsp://<server-host>:8554/stream`
+- Viewer page: `http://<server-host>:8889/stream` or `https://cam.<domain>/stream`
 
 ## Deployment modes
 
-1. Direct access on port `:8080`
-   - Open `http://<server-host>:8080/` in a browser.
+1. Direct access on port `:8889`
+   - Open `http://<server-host>:8889/stream` in a browser on the same LAN.
+   - For remote access, browsers require HTTPS for WebRTC.
 
 2. Behind a reverse proxy (SWAG/NGINX/etc)
-   - Proxy `cam.<domain>` to `http://127.0.0.1:8080`.
+   - Proxy `cam.<domain>` to `http://127.0.0.1:8889`.
+   - Enable TLS on the proxy so browsers allow WebRTC.
 
 ## Firewall notes
 
-- Allow TCP `1935` from the Pi to the server (outbound from the Pi, inbound on the server).
-- For viewers, open `80/443` on the reverse proxy (or `8080` if using direct access).
+- Allow TCP `8554` from the Pi to the server (outbound from the Pi, inbound on the server).
+- Allow TCP `8889` (from proxy or LAN) and UDP `8189` for WebRTC media.
+
+## NAT note
+
+If viewers connect from outside your LAN, set `webrtcAdditionalHosts` in `mediamtx.yml` to your public IP/hostname and consider adding STUN/TURN servers.
 
 ## Security note
 
