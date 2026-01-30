@@ -56,6 +56,12 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now cam-stream
 ```
 
+Quick install (copies files and enables service):
+
+```sh
+./systemd/install.sh
+```
+
 ## Troubleshooting
 
 - Logs: `journalctl -u cam-stream -f`
