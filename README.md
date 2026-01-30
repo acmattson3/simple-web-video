@@ -51,6 +51,8 @@ Quick test:
 RTMP_URL=rtmp://<server-host>/live/stream ./pi/stream.sh
 ```
 
+Note: the default stream disables audio and forces H.264 baseline + yuv420p for browser compatibility.
+
 Optional systemd:
 
 ```sh

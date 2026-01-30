@@ -15,6 +15,8 @@ sudo apt-get install -y ffmpeg
 RTMP_URL=rtmp://<server-host>/live/stream ./stream.sh
 ```
 
+Note: the default stream disables audio and forces H.264 baseline + yuv420p for browser compatibility.
+
 ## Configuration via `/etc/cam-stream.env`
 
 Create a file like:
