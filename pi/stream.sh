@@ -26,10 +26,14 @@ exec ffmpeg \
   -c:v libx264 \
   -preset "${PRESET}" \
   -tune zerolatency \
+  -pix_fmt yuv420p \
+  -profile:v baseline \
+  -level 3.1 \
   -b:v "${VBITRATE}" \
   -maxrate "${MAXRATE}" \
   -bufsize "${BUFSIZE}" \
   -g "${GOP}" \
   -keyint_min "${GOP}" \
   -sc_threshold 0 \
+  -an \
   -f flv "${RTMP_URL}"
