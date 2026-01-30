@@ -19,20 +19,14 @@ Note: the default stream disables audio and forces H.264 baseline + yuv420p for 
 
 ## Configuration via `/etc/cam-stream.env`
 
-Create a file like:
+Create `./config.env` (copy from `config.env.example`) and edit values:
 
 ```sh
-RTSP_URL=rtsp://yourdomain:8554/stream
-RTSP_TRANSPORT=tcp
-VIDEO_DEV=/dev/video0
-WIDTH=1280
-HEIGHT=720
-FPS=25
-VBITRATE=500k
-MAXRATE=500k
-BUFSIZE=1000k
-PRESET=veryfast
+cp ./config.env.example ./config.env
+${EDITOR:-nano} ./config.env
 ```
+
+`./systemd/install.sh` will copy `./config.env` to `/etc/cam-stream.env` and restart the service.
 
 ## systemd setup
 
