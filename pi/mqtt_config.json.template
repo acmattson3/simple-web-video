@@ -1,0 +1,25 @@
+{
+  "system": "pebblebot",
+  "component": {
+    "type": "cameras",
+    "id": "pitcam"
+  },
+  "mqtt": {
+    "host": "your-mqtt-host",
+    "port": 1883,
+    "keepalive": 30,
+    "username": "",
+    "password": "",
+    "tls": {
+      "enabled": false,
+      "ca_cert": "",
+      "client_cert": "",
+      "client_key": "",
+      "insecure": false,
+      "ciphers": ""
+    }
+  },
+  "heartbeat_interval": 10,
+  "stream_service": "cam-stream",
+  "log_level": "INFO"
+}

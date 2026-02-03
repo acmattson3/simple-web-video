@@ -1,0 +1,6 @@
+[Unit]
+Description=Pitcam MQTT Watchdog
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'systemctl is-active --quiet pitcam-mqtt.service || systemctl restart pitcam-mqtt.service'

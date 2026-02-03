@@ -42,7 +42,7 @@ Install deps:
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y ffmpeg
+sudo apt-get install -y ffmpeg python3-paho-mqtt
 ```
 
 Quick test:
@@ -51,7 +51,7 @@ Quick test:
 RTSP_URL=rtsp://<server-host>:8554/stream ./pi/stream.sh
 ```
 
-Systemd (recommended):
+Systemd + MQTT control (recommended):
 
 1. Create a local config file:
 
@@ -60,27 +60,48 @@ cp ./pi/config.env.example ./pi/config.env
 ${EDITOR:-nano} ./pi/config.env
 ```
 
-2. Install + enable the service (copies files, config, and restarts):
+2. Create MQTT config:
+
+```sh
+cp ./pi/mqtt_config.json.template ./pi/mqtt_config.json
+${EDITOR:-nano} ./pi/mqtt_config.json
+```
+
+3. Install + enable the services (copies files, config, and restarts):
 
 ```sh
 ./pi/systemd/install.sh
 ```
 
+The camera stream is started/stopped via MQTT:
+
+```
+pebblebot/components/cameras/pitcam/incoming/front-camera
+```
+
+`cam-stream` is installed but disabled by default; the MQTT helper toggles it.
+
 Manual systemd (if you prefer):
 
 ```sh
 sudo mkdir -p /opt/cam
-sudo cp -r ./pi/stream.sh ./pi/stream.py /opt/cam/
+sudo cp -r ./pi/stream.sh ./pi/stream.py ./pi/pitcam_mqtt.py /opt/cam/
 sudo cp ./pi/systemd/cam-stream.service /etc/systemd/system/cam-stream.service
 sudo cp ./pi/config.env /etc/cam-stream.env
+sudo cp ./pi/systemd/pitcam-mqtt.service /etc/systemd/system/pitcam-mqtt.service
+sudo cp ./pi/systemd/pitcam-mqtt-watchdog.service /etc/systemd/system/pitcam-mqtt-watchdog.service
+sudo cp ./pi/systemd/pitcam-mqtt-watchdog.timer /etc/systemd/system/pitcam-mqtt-watchdog.timer
+sudo cp ./pi/mqtt_config.json /etc/pitcam-mqtt.json
 sudo systemctl daemon-reload
-sudo systemctl enable --now cam-stream
+sudo systemctl enable --now pitcam-mqtt
+sudo systemctl enable --now pitcam-mqtt-watchdog.timer
 ```
 
 Config notes:
 
 - The service reads `/etc/cam-stream.env`.
-- Rerun `./pi/systemd/install.sh` after changing `./pi/config.env` to apply updates.
+- The MQTT helper reads `/etc/pitcam-mqtt.json`.
+- Rerun `./pi/systemd/install.sh` after changing `./pi/config.env` or `./pi/mqtt_config.json` to apply updates.
 - See `pi/README.md` for all options.
 
 ## Security note

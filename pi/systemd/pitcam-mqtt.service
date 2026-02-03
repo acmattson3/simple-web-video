@@ -1,0 +1,16 @@
+[Unit]
+Description=Pitcam MQTT Bridge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=notify
+NotifyAccess=main
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/usr/bin/env python3 /opt/cam/pitcam_mqtt.py --config /etc/pitcam-mqtt.json
+Restart=always
+RestartSec=3
+WatchdogSec=20
+
+[Install]
+WantedBy=multi-user.target
