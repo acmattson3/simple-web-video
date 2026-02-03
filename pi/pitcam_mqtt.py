@@ -101,12 +101,16 @@ class PitcamController:
         self.component_id = str(component.get("id") or DEFAULT_COMPONENT_ID)
         self.heartbeat_interval = int(config.get("heartbeat_interval") or DEFAULT_HEARTBEAT)
         self.stream_service = str(config.get("stream_service") or DEFAULT_STREAM_SERVICE)
+        self.webrtc_url = str(config.get("webrtc_url") or "").strip()
 
         self.command_topic = (
             f"{self.system}/components/{self.component_type}/{self.component_id}/incoming/front-camera"
         )
         self.online_topic = (
             f"{self.system}/components/{self.component_type}/{self.component_id}/outgoing/online"
+        )
+        self.status_topic = (
+            f"{self.system}/components/{self.component_type}/{self.component_id}/outgoing/status"
         )
 
         self.client = mqtt.Client(client_id=f"{self.component_id}-mqtt")
@@ -137,6 +141,15 @@ class PitcamController:
         payload = {"t": _now_ms(), "online": bool(online)}
         self.client.publish(self.online_topic, json.dumps(payload), qos=1, retain=True)
 
+    def _publish_status(self) -> None:
+        if not self.webrtc_url:
+            return
+        payload = {
+            "timestamp": time.time(),
+            "value": {"webrtc_url": self.webrtc_url},
+        }
+        self.client.publish(self.status_topic, json.dumps(payload), qos=1, retain=True)
+
     def _on_connect(self, _client: mqtt.Client, _userdata: Any, _flags: Dict[str, Any], rc: int) -> None:
         if rc != 0:
             logging.error("MQTT connection failed: %s", mqtt.connack_string(rc))
@@ -144,6 +157,7 @@ class PitcamController:
         logging.info("MQTT connected")
         self.client.subscribe(self.command_topic, qos=1)
         self._publish_online(True)
+        self._publish_status()
         _systemd_notify("READY=1")
 
     def _on_disconnect(self, _client: mqtt.Client, _userdata: Any, rc: int) -> None:
@@ -167,6 +181,7 @@ class PitcamController:
         while not self._stop_event.is_set():
             try:
                 self._publish_online(True)
+                self._publish_status()
                 _systemd_notify("WATCHDOG=1")
             except Exception:
                 logging.exception("Heartbeat failed")

@@ -48,6 +48,8 @@ and publishes online heartbeats to:
 ```
 
 `./systemd/install.sh` will copy `./mqtt_config.json` to `/etc/pitcam-mqtt.json`.
+
+Optional: set `webrtc_url` in the config to advertise a viewer link to the PebbleBot UI.
 {system}/components/cameras/pitcam/outgoing/online
 ```
 

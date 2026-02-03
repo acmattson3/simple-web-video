@@ -21,5 +21,6 @@
   },
   "heartbeat_interval": 10,
   "stream_service": "cam-stream",
+  "webrtc_url": "https://cam.yourdomain/stream",
   "log_level": "INFO"
 }
