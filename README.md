@@ -2,6 +2,12 @@
 
 Minimal setup for sub-second latency: Pi pushes RTSP to server; server serves WebRTC on a subdomain.
 
+## How it works
+
+This repo implements a minimal live video pipeline with two parts: a server and a Pi client. The server runs MediaMTX in Docker (`server/docker-compose.yml`) and exposes RTSP ingest on `8554`, plus a WebRTC viewer endpoint on `8889` (with UDP media on `8189`). The MediaMTX config defines a single `stream` path, so a publisher sends video to `rtsp://<server-host>:8554/stream` and viewers open `http://<server-host>:8889/stream` (or `https://cam.<domain>/stream` behind a TLS reverse proxy).
+
+On the Pi side, `stream.sh` captures `/dev/video0` and pushes low-latency H.264 to the RTSP URL. For managed operation, systemd installs `cam-stream` plus an MQTT bridge (`pitcam_mqtt.py`) that listens for front-camera enable/disable commands and starts or stops the stream service with `systemctl`. The MQTT bridge also publishes online heartbeats and optional status metadata (like a WebRTC URL), while a watchdog timer keeps the control service healthy.
+
 ## Server-side (RTSP + WebRTC)
 
 From `server/`:
