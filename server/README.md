@@ -2,6 +2,25 @@
 
 Dockerized MediaMTX for RTSP ingest and WebRTC playback (sub-second latency).
 
+## Use in an existing Compose stack
+
+Build this server image directly in your own `docker-compose.yml`:
+
+```yaml
+services:
+  mediamtx:
+    build:
+      context: ./server
+    container_name: cam-mediamtx
+    ports:
+      - "8554:8554/tcp"
+      - "8889:8889/tcp"
+      - "8189:8189/udp"
+    restart: unless-stopped
+```
+
+The image bakes in `mediamtx.yml`, so no bind mount is required unless you want to override the config at runtime.
+
 ## Ports
 
 - RTSP ingest: `8554/tcp`
