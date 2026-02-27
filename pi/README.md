@@ -28,7 +28,7 @@ ${EDITOR:-nano} ./config.env
 
 `./systemd/install.sh` will copy `./config.env` to `/etc/cam-stream.env`.
 
-## MQTT control (start/stop on command)
+## MQTT control (start/stop on mqtt-video flag)
 
 Create `./mqtt_config.json` (copy from `mqtt_config.json.template`) and edit values:
 
@@ -40,18 +40,22 @@ ${EDITOR:-nano} ./mqtt_config.json
 The MQTT helper listens on:
 
 ```
-{system}/components/cameras/pitcam/incoming/front-camera
+{system}/cameras/pitcam/incoming/flags/mqtt-video
 ```
 
-and publishes online heartbeats to:
+`true` starts `cam-stream`; `false` stops it.
 
+It publishes liveness/status to:
+
+```
+{system}/cameras/pitcam/outgoing/online
+{system}/cameras/pitcam/outgoing/heartbeat
+{system}/cameras/pitcam/outgoing/status
 ```
 
 `./systemd/install.sh` will copy `./mqtt_config.json` to `/etc/pitcam-mqtt.json`.
 
 Optional: set `webrtc_url` in the config to advertise a viewer link to the PebbleBot UI.
-{system}/components/cameras/pitcam/outgoing/online
-```
 
 ## systemd setup
 

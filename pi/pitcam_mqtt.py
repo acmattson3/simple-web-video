@@ -103,14 +103,17 @@ class PitcamController:
         self.stream_service = str(config.get("stream_service") or DEFAULT_STREAM_SERVICE)
         self.webrtc_url = str(config.get("webrtc_url") or "").strip()
 
-        self.command_topic = (
-            f"{self.system}/components/{self.component_type}/{self.component_id}/incoming/front-camera"
+        self.video_flag_topic = (
+            f"{self.system}/{self.component_type}/{self.component_id}/incoming/flags/mqtt-video"
         )
         self.online_topic = (
-            f"{self.system}/components/{self.component_type}/{self.component_id}/outgoing/online"
+            f"{self.system}/{self.component_type}/{self.component_id}/outgoing/online"
+        )
+        self.heartbeat_topic = (
+            f"{self.system}/{self.component_type}/{self.component_id}/outgoing/heartbeat"
         )
         self.status_topic = (
-            f"{self.system}/components/{self.component_type}/{self.component_id}/outgoing/status"
+            f"{self.system}/{self.component_type}/{self.component_id}/outgoing/status"
         )
 
         self.client = mqtt.Client(client_id=f"{self.component_id}-mqtt")
@@ -136,10 +139,27 @@ class PitcamController:
         self._host = str(mqtt_cfg.get("host") or "")
         self._port = int(mqtt_cfg.get("port") or 1883)
         self._keepalive = int(mqtt_cfg.get("keepalive") or 30)
+        self._mqtt_video_enabled = False
+
+    def _apply_video_state(self, reason: str) -> None:
+        should_run = self._mqtt_video_enabled
+        action = "start" if should_run else "stop"
+        logging.info(
+            "Video state update (%s): mqtt-video=%s -> systemctl %s %s",
+            reason,
+            self._mqtt_video_enabled,
+            action,
+            self.stream_service,
+        )
+        _run_systemctl(action, self.stream_service)
 
     def _publish_online(self, online: bool) -> None:
-        payload = {"t": _now_ms(), "online": bool(online)}
+        payload = {"t": _now_ms() if online else 0, "online": bool(online)}
         self.client.publish(self.online_topic, json.dumps(payload), qos=1, retain=True)
+
+    def _publish_heartbeat(self, timestamp_ms: Optional[int] = None) -> None:
+        t = _now_ms() if timestamp_ms is None else int(timestamp_ms)
+        self.client.publish(self.heartbeat_topic, json.dumps({"t": t}), qos=1, retain=True)
 
     def _publish_status(self) -> None:
         if not self.webrtc_url:
@@ -155,8 +175,9 @@ class PitcamController:
             logging.error("MQTT connection failed: %s", mqtt.connack_string(rc))
             return
         logging.info("MQTT connected")
-        self.client.subscribe(self.command_topic, qos=1)
+        self.client.subscribe(self.video_flag_topic, qos=1)
         self._publish_online(True)
+        self._publish_heartbeat()
         self._publish_status()
         _systemd_notify("READY=1")
 
@@ -166,21 +187,21 @@ class PitcamController:
             self._stop_event.set()
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> None:
-        if msg.topic != self.command_topic:
+        if msg.topic != self.video_flag_topic:
             return
         enabled = _extract_enabled(msg.payload)
         if enabled is None:
-            logging.warning("Invalid front-camera payload: %s", msg.payload)
+            logging.warning("Invalid mqtt-video flag payload: %s", msg.payload)
             return
-        action = "start" if enabled else "stop"
-        logging.info("Received front-camera=%s; systemctl %s %s", enabled, action, self.stream_service)
-        _run_systemctl(action, self.stream_service)
+        self._mqtt_video_enabled = enabled
+        self._apply_video_state("flags/mqtt-video")
 
     def _heartbeat_loop(self) -> None:
         interval = max(1, self.heartbeat_interval)
         while not self._stop_event.is_set():
             try:
                 self._publish_online(True)
+                self._publish_heartbeat()
                 self._publish_status()
                 _systemd_notify("WATCHDOG=1")
             except Exception:
@@ -191,6 +212,7 @@ class PitcamController:
         if not self._host:
             logging.error("MQTT host not configured.")
             return 2
+        self._apply_video_state("startup-default")
         self._heartbeat_thread.start()
         try:
             self.client.connect(self._host, self._port, self._keepalive)
@@ -203,6 +225,7 @@ class PitcamController:
         self.client.loop_stop()
         try:
             self._publish_online(False)
+            self._publish_heartbeat(0)
         except Exception:
             logging.exception("Failed to publish offline state")
         return 1
