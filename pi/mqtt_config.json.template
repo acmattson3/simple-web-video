@@ -21,6 +21,19 @@
   },
   "heartbeat_interval": 10,
   "stream_service": "cam-stream",
+  "reboot_control": {
+    "command": ["sudo", "-n", "/sbin/reboot"],
+    "cwd": "",
+    "ignore_retained": true,
+    "cooldown_seconds": 30
+  },
+  "git_pull_control": {
+    "command": [],
+    "cwd": "/opt/cam",
+    "env": {},
+    "ignore_retained": true,
+    "cooldown_seconds": 60
+  },
   "webrtc_url": "https://cam.yourdomain/stream",
   "log_level": "INFO"
 }

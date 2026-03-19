@@ -41,9 +41,22 @@ The MQTT helper listens on:
 
 ```
 {system}/cameras/pitcam/incoming/flags/mqtt-video
+{system}/cameras/pitcam/incoming/flags/reboot
+{system}/cameras/pitcam/incoming/flags/git-pull
 ```
 
 `true` starts `cam-stream`; `false` stops it.
+
+`true` on `flags/reboot` issues a one-shot reboot command.
+
+`true` on `flags/git-pull` issues a one-shot repo update command.
+
+Safety behavior:
+
+- `reboot` and `git-pull` requests are expected to be non-retained.
+- Retained `reboot` and `git-pull` requests are ignored by default.
+- `reboot` uses a default 30 second cooldown.
+- `git-pull` uses a default 60 second cooldown and ignores overlapping runs.
 
 It publishes liveness/status to:
 
@@ -56,6 +69,58 @@ It publishes liveness/status to:
 `./systemd/install.sh` will copy `./mqtt_config.json` to `/etc/pitcam-mqtt.json`.
 
 Optional: set `webrtc_url` in the config to advertise a viewer link to the PebbleBot UI.
+If reboot or git-pull commands are configured, the status payload also advertises those control topics.
+
+Remote command config lives in `mqtt_config.json`:
+
+- `reboot_control.command`
+  - Command to run for `incoming/flags/reboot`. Example: `["sudo", "-n", "/sbin/reboot"]`
+- `reboot_control.cwd`
+  - Optional working directory for the reboot command.
+- `reboot_control.ignore_retained`
+  - Default `true`.
+- `reboot_control.cooldown_seconds`
+  - Default `30`.
+- `git_pull_control.command`
+  - Command to run for `incoming/flags/git-pull`. Leave empty to disable.
+- `git_pull_control.cwd`
+  - Repo path on the Pi where `git pull` should run.
+- `git_pull_control.env`
+  - Optional environment overrides for the git-pull command.
+- `git_pull_control.ignore_retained`
+  - Default `true`.
+- `git_pull_control.cooldown_seconds`
+  - Default `60`.
+
+Example git-pull setup:
+
+```json
+"git_pull_control": {
+  "command": ["git", "pull", "--ff-only"],
+  "cwd": "/home/pi/simple-web-video",
+  "env": {},
+  "ignore_retained": true,
+  "cooldown_seconds": 60
+}
+```
+
+This only works if the Pi is actually running from a git checkout. If you only copied files into `/opt/cam`, there is no repo there for `git pull`.
+
+## Reboot permission setup
+
+If `reboot_control.command` uses `sudo`, the runtime user must be allowed to reboot without an interactive password prompt. Edit sudoers with:
+
+```sh
+sudo visudo
+```
+
+Add a rule like this, replacing `pi` with the service user:
+
+```text
+pi ALL=(root) NOPASSWD: /sbin/reboot
+```
+
+`sudoers` is the right file; `visudo` is the safe way to edit it.
 
 ## systemd setup
 

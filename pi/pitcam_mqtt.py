@@ -3,6 +3,7 @@ import argparse
 import json
 import logging
 import os
+import shlex
 import signal
 import ssl
 import subprocess
@@ -90,6 +91,18 @@ def _systemd_notify(message: str) -> None:
     subprocess.run(["systemd-notify", message], check=False)
 
 
+def _normalize_command(command: Any) -> list[str]:
+    if isinstance(command, str):
+        parts = shlex.split(command)
+    elif isinstance(command, list):
+        parts = [str(item) for item in command if item is not None]
+    else:
+        raise ValueError("command must be string or list")
+    if not parts:
+        raise ValueError("command cannot be empty")
+    return parts
+
+
 class PitcamController:
     def __init__(self, config: Dict[str, Any]) -> None:
         component = config.get("component", {}) if isinstance(config.get("component"), dict) else {}
@@ -114,6 +127,12 @@ class PitcamController:
         )
         self.status_topic = (
             f"{self.system}/{self.component_type}/{self.component_id}/outgoing/status"
+        )
+        self.reboot_flag_topic = (
+            f"{self.system}/{self.component_type}/{self.component_id}/incoming/flags/reboot"
+        )
+        self.git_pull_flag_topic = (
+            f"{self.system}/{self.component_type}/{self.component_id}/incoming/flags/git-pull"
         )
 
         self.client = mqtt.Client(client_id=f"{self.component_id}-mqtt")
@@ -144,6 +163,15 @@ class PitcamController:
         self._port = int(mqtt_cfg.get("port") or 1883)
         self._keepalive = int(mqtt_cfg.get("keepalive") or 30)
         self._mqtt_video_enabled = False
+        self._reboot_control_cfg = (
+            config.get("reboot_control", {}) if isinstance(config.get("reboot_control"), dict) else {}
+        )
+        self._git_pull_control_cfg = (
+            config.get("git_pull_control", {}) if isinstance(config.get("git_pull_control"), dict) else {}
+        )
+        self._last_reboot_request_at = 0.0
+        self._last_git_pull_request_at = 0.0
+        self._git_pull_process: Optional[subprocess.Popen[Any]] = None
 
     def _apply_video_state(self, reason: str) -> None:
         should_run = self._mqtt_video_enabled
@@ -166,11 +194,24 @@ class PitcamController:
         self.client.publish(self.heartbeat_topic, json.dumps({"t": t}), qos=0, retain=False)
 
     def _publish_status(self) -> None:
-        if not self.webrtc_url:
+        value: Dict[str, Any] = {}
+        if self.webrtc_url:
+            value["webrtc_url"] = self.webrtc_url
+        if self._reboot_command():
+            value["reboot"] = {
+                "available": True,
+                "flag_topic": self.reboot_flag_topic,
+            }
+        if self._git_pull_command():
+            value["git_pull"] = {
+                "available": True,
+                "flag_topic": self.git_pull_flag_topic,
+            }
+        if not value:
             return
         payload = {
             "timestamp": time.time(),
-            "value": {"webrtc_url": self.webrtc_url},
+            "value": value,
         }
         self.client.publish(self.status_topic, json.dumps(payload), qos=0, retain=True)
 
@@ -181,6 +222,8 @@ class PitcamController:
         logging.info("MQTT connected")
         self._connected.set()
         self.client.subscribe(self.video_flag_topic, qos=1)
+        self.client.subscribe(self.reboot_flag_topic, qos=1)
+        self.client.subscribe(self.git_pull_flag_topic, qos=1)
         self._publish_online(True)
         self._publish_heartbeat()
         self._publish_status()
@@ -193,14 +236,117 @@ class PitcamController:
             self._stop_event.set()
 
     def _on_message(self, _client: mqtt.Client, _userdata: Any, msg: mqtt.MQTTMessage) -> None:
-        if msg.topic != self.video_flag_topic:
-            return
         enabled = _extract_enabled(msg.payload)
-        if enabled is None:
-            logging.warning("Invalid mqtt-video flag payload: %s", msg.payload)
+        if msg.topic == self.video_flag_topic:
+            if enabled is None:
+                logging.warning("Invalid mqtt-video flag payload: %s", msg.payload)
+                return
+            self._mqtt_video_enabled = enabled
+            self._apply_video_state("flags/mqtt-video")
             return
-        self._mqtt_video_enabled = enabled
-        self._apply_video_state("flags/mqtt-video")
+        if msg.topic == self.reboot_flag_topic:
+            self._handle_reboot_request(enabled, bool(msg.retain), msg.payload)
+            return
+        if msg.topic == self.git_pull_flag_topic:
+            self._handle_git_pull_request(enabled, bool(msg.retain), msg.payload)
+
+    @staticmethod
+    def _resolve_cwd(cwd_value: Any) -> Optional[str]:
+        if not cwd_value:
+            return None
+        return str(os.path.abspath(os.path.expanduser(str(cwd_value))))
+
+    @staticmethod
+    def _build_env(env_overrides: Any) -> Dict[str, str]:
+        env = os.environ.copy()
+        if isinstance(env_overrides, dict):
+            env.update({str(k): str(v) for k, v in env_overrides.items()})
+        return env
+
+    def _reboot_command(self) -> Any:
+        return self._reboot_control_cfg.get("command")
+
+    def _git_pull_command(self) -> Any:
+        return self._git_pull_control_cfg.get("command")
+
+    def _start_reboot_command(self) -> None:
+        command = self._reboot_command()
+        if not command:
+            logging.warning("reboot flag received but reboot_control.command is missing")
+            return
+        try:
+            proc = subprocess.Popen(
+                _normalize_command(command),
+                cwd=self._resolve_cwd(self._reboot_control_cfg.get("cwd")),
+                env=self._build_env(self._reboot_control_cfg.get("env")),
+            )
+            logging.warning("Issued reboot command pid=%s", proc.pid)
+        except (OSError, ValueError) as exc:
+            logging.error("Failed to execute reboot command: %s", exc)
+
+    def _start_git_pull_command(self) -> None:
+        command = self._git_pull_command()
+        if not command:
+            logging.warning("git-pull flag received but git_pull_control.command is missing")
+            return
+        existing = self._git_pull_process
+        if existing and existing.poll() is None:
+            logging.warning("Ignoring git-pull request while previous git pull command is still running")
+            return
+        try:
+            proc = subprocess.Popen(
+                _normalize_command(command),
+                cwd=self._resolve_cwd(self._git_pull_control_cfg.get("cwd")),
+                env=self._build_env(self._git_pull_control_cfg.get("env")),
+            )
+            self._git_pull_process = proc
+            logging.warning("Issued git pull command pid=%s", proc.pid)
+        except (OSError, ValueError) as exc:
+            logging.error("Failed to execute git pull command: %s", exc)
+
+    def _handle_reboot_request(self, enabled: Optional[bool], retained: bool, payload: bytes) -> None:
+        if enabled is None:
+            logging.warning("Invalid reboot flag payload: %s", payload)
+            return
+        if not enabled:
+            return
+        if retained and bool(self._reboot_control_cfg.get("ignore_retained", True)):
+            logging.warning("Ignoring retained reboot request on %s", self.reboot_flag_topic)
+            return
+        cooldown = float(self._reboot_control_cfg.get("cooldown_seconds") or 30)
+        now = time.monotonic()
+        elapsed = now - self._last_reboot_request_at
+        if elapsed < cooldown:
+            logging.warning(
+                "Ignoring reboot request on %s during cooldown (%.1fs remaining)",
+                self.reboot_flag_topic,
+                cooldown - elapsed,
+            )
+            return
+        self._last_reboot_request_at = now
+        self._start_reboot_command()
+
+    def _handle_git_pull_request(self, enabled: Optional[bool], retained: bool, payload: bytes) -> None:
+        if enabled is None:
+            logging.warning("Invalid git-pull flag payload: %s", payload)
+            return
+        if not enabled:
+            return
+        if retained and bool(self._git_pull_control_cfg.get("ignore_retained", True)):
+            logging.warning("Ignoring retained git-pull request on %s", self.git_pull_flag_topic)
+            return
+        cooldown = float(self._git_pull_control_cfg.get("cooldown_seconds") or 60)
+        now = time.monotonic()
+        elapsed = now - self._last_git_pull_request_at
+        if elapsed < cooldown:
+            logging.warning(
+                "Ignoring git-pull request on %s during cooldown (%.1fs remaining)",
+                self.git_pull_flag_topic,
+                cooldown - elapsed,
+            )
+            return
+        self._last_git_pull_request_at = now
+        self._start_git_pull_command()
 
     def _heartbeat_loop(self) -> None:
         interval = max(1, self.heartbeat_interval)

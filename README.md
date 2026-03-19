@@ -6,7 +6,7 @@ Minimal setup for sub-second latency: Pi pushes RTSP to server; server serves We
 
 This repo implements a minimal live video pipeline with two parts: a server and a Pi client. The server runs MediaMTX in Docker (`server/docker-compose.yml`) and exposes RTSP ingest on `8554`, plus a WebRTC viewer endpoint on `8889` (with UDP media on `8189`). The MediaMTX config defines a single `stream` path, so a publisher sends video to `rtsp://<server-host>:8554/stream` and viewers open `http://<server-host>:8889/stream` (or `https://cam.<domain>/stream` behind a TLS reverse proxy).
 
-On the Pi side, `stream.sh` captures `/dev/video0` and pushes low-latency H.264 to the RTSP URL. For managed operation, systemd installs `cam-stream` plus an MQTT bridge (`pitcam_mqtt.py`) that listens for front-camera enable/disable commands and starts or stops the stream service with `systemctl`. The MQTT bridge also publishes online heartbeats and optional status metadata (like a WebRTC URL), while a watchdog timer keeps the control service healthy.
+On the Pi side, `stream.sh` captures `/dev/video0` and pushes low-latency H.264 to the RTSP URL. For managed operation, systemd installs `cam-stream` plus an MQTT bridge (`pitcam_mqtt.py`) that listens for camera-control, reboot, and git-pull MQTT flags. It starts or stops the stream service with `systemctl`, can execute optional one-shot reboot or repo-update commands, and publishes online heartbeats plus optional status metadata (like a WebRTC URL) while a watchdog timer keeps the control service healthy.
 
 ## Server-side (RTSP + WebRTC)
 
@@ -79,13 +79,16 @@ ${EDITOR:-nano} ./pi/mqtt_config.json
 ./pi/systemd/install.sh
 ```
 
-The camera stream is started/stopped via MQTT:
+The camera stream and optional remote host actions are controlled via MQTT:
 
 ```
-pebblebot/components/cameras/pitcam/incoming/front-camera
+pebblebot/cameras/pitcam/incoming/flags/mqtt-video
+pebblebot/cameras/pitcam/incoming/flags/reboot
+pebblebot/cameras/pitcam/incoming/flags/git-pull
 ```
 
 `cam-stream` is installed but disabled by default; the MQTT helper toggles it.
+`reboot` and `git-pull` are one-shot commands, ignored when retained by default, and only run if configured in `./pi/mqtt_config.json`.
 
 Manual systemd (if you prefer):
 
@@ -108,7 +111,9 @@ Config notes:
 - The service reads `/etc/cam-stream.env`.
 - The MQTT helper reads `/etc/pitcam-mqtt.json`.
 - Rerun `./pi/systemd/install.sh` after changing `./pi/config.env` or `./pi/mqtt_config.json` to apply updates.
-- See `pi/README.md` for all options.
+- If you enable reboot control, add a `NOPASSWD` rule with `sudo visudo` so the service user can run `/sbin/reboot`.
+- Remote `git-pull` only works if the Pi has this repo cloned locally and `git_pull_control.cwd` points at that checkout.
+- See `pi/README.md` for the full MQTT command config and sudoers instructions.
 
 ## Security note
 
