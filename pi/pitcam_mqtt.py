@@ -117,6 +117,9 @@ class PitcamController:
         )
 
         self.client = mqtt.Client(client_id=f"{self.component_id}-mqtt")
+        self.client.max_inflight_messages_set(1)
+        self.client.max_queued_messages_set(8)
+        self.client.reconnect_delay_set(min_delay=1, max_delay=30)
         if mqtt_cfg.get("username"):
             self.client.username_pw_set(
                 mqtt_cfg.get("username"),
@@ -135,6 +138,7 @@ class PitcamController:
         )
 
         self._stop_event = threading.Event()
+        self._connected = threading.Event()
         self._heartbeat_thread = threading.Thread(target=self._heartbeat_loop, daemon=True)
         self._host = str(mqtt_cfg.get("host") or "")
         self._port = int(mqtt_cfg.get("port") or 1883)
@@ -159,7 +163,7 @@ class PitcamController:
 
     def _publish_heartbeat(self, timestamp_ms: Optional[int] = None) -> None:
         t = _now_ms() if timestamp_ms is None else int(timestamp_ms)
-        self.client.publish(self.heartbeat_topic, json.dumps({"t": t}), qos=1, retain=True)
+        self.client.publish(self.heartbeat_topic, json.dumps({"t": t}), qos=0, retain=False)
 
     def _publish_status(self) -> None:
         if not self.webrtc_url:
@@ -168,13 +172,14 @@ class PitcamController:
             "timestamp": time.time(),
             "value": {"webrtc_url": self.webrtc_url},
         }
-        self.client.publish(self.status_topic, json.dumps(payload), qos=1, retain=True)
+        self.client.publish(self.status_topic, json.dumps(payload), qos=0, retain=True)
 
     def _on_connect(self, _client: mqtt.Client, _userdata: Any, _flags: Dict[str, Any], rc: int) -> None:
         if rc != 0:
             logging.error("MQTT connection failed: %s", mqtt.connack_string(rc))
             return
         logging.info("MQTT connected")
+        self._connected.set()
         self.client.subscribe(self.video_flag_topic, qos=1)
         self._publish_online(True)
         self._publish_heartbeat()
@@ -182,6 +187,7 @@ class PitcamController:
         _systemd_notify("READY=1")
 
     def _on_disconnect(self, _client: mqtt.Client, _userdata: Any, rc: int) -> None:
+        self._connected.clear()
         if rc != mqtt.MQTT_ERR_SUCCESS:
             logging.error("MQTT disconnected (rc=%s); exiting for restart", rc)
             self._stop_event.set()
@@ -200,10 +206,9 @@ class PitcamController:
         interval = max(1, self.heartbeat_interval)
         while not self._stop_event.is_set():
             try:
-                self._publish_online(True)
-                self._publish_heartbeat()
-                self._publish_status()
-                _systemd_notify("WATCHDOG=1")
+                if self._connected.is_set():
+                    self._publish_heartbeat()
+                    _systemd_notify("WATCHDOG=1")
             except Exception:
                 logging.exception("Heartbeat failed")
             self._stop_event.wait(interval)
@@ -213,21 +218,23 @@ class PitcamController:
             logging.error("MQTT host not configured.")
             return 2
         self._apply_video_state("startup-default")
-        self._heartbeat_thread.start()
         try:
-            self.client.connect(self._host, self._port, self._keepalive)
+            self.client.connect_async(self._host, self._port, self._keepalive)
         except Exception:
             logging.exception("Failed to connect to MQTT broker")
             return 2
         self.client.loop_start()
+        self._heartbeat_thread.start()
         while not self._stop_event.is_set():
             time.sleep(0.2)
-        self.client.loop_stop()
         try:
-            self._publish_online(False)
-            self._publish_heartbeat(0)
+            if self._connected.is_set():
+                self._publish_online(False)
+                self._publish_heartbeat(0)
+                time.sleep(0.2)
         except Exception:
             logging.exception("Failed to publish offline state")
+        self.client.loop_stop()
         return 1
 
 
