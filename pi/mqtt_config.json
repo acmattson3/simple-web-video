@@ -1,0 +1,39 @@
+{
+  "system": "pebblebot",
+  "component": {
+    "type": "cameras",
+    "id": "pitcam"
+  },
+  "mqtt": {
+    "host": "sssn.us",
+    "port": 1883,
+    "keepalive": 30,
+    "username": "acmattson3",
+    "password": "PebbleBRO!",
+    "tls": {
+      "enabled": false,
+      "ca_cert": "",
+      "client_cert": "",
+      "client_key": "",
+      "insecure": false,
+      "ciphers": ""
+    }
+  },
+  "heartbeat_interval": 10,
+  "stream_service": "cam-stream",
+  "reboot_control": {
+    "command": ["sudo", "-n", "/sbin/reboot"],
+    "cwd": "",
+    "ignore_retained": true,
+    "cooldown_seconds": 30
+  },
+  "git_pull_control": {
+    "command": ["git", "pull", "--ff-only"],
+    "cwd": "/home/pi/simple-web-video",
+    "env": {},
+    "ignore_retained": true,
+    "cooldown_seconds": 60
+  },
+  "webrtc_url": "https://pitcam.sssn.us/stream",
+  "log_level": "INFO"
+}
